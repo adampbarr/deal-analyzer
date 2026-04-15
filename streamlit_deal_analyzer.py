@@ -1,4 +1,5 @@
-
+streamlit
+requests
 import argparse
 import os
 import sys
