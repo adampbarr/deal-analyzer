@@ -1,13 +1,9 @@
-streamlit
-requests
-import argparse
+import streamlit as st
+import requests
 import os
-import sys
 import statistics
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
-
-import requests
 
 NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
 MARKETCHECK_SEARCH_URL = "https://api.marketcheck.com/v2/search/car/active"
@@ -238,76 +234,91 @@ def format_money(value: Optional[float]) -> str:
     return "${:,.2f}".format(value)
 
 
-def print_report(result: DealAnalysis) -> None:
-    vehicle_name = " ".join([str(x) for x in [result.vehicle.year, result.vehicle.make, result.vehicle.model, result.vehicle.trim] if x]).strip()
+st.set_page_config(page_title="Deal Analyzer", layout="centered")
+st.title("Deal Analyzer")
 
-    print("\nDEAL ANALYZER REPORT")
-    print("-" * 60)
-    print(f"Vehicle: {vehicle_name or result.vehicle.vin}")
-    print(f"VIN: {result.vehicle.vin}")
-    print(f"Mileage: {result.mileage:,}")
-    print(f"ZIP: {result.zip_code}")
-    print(f"Body: {result.vehicle.body_class or 'Unknown'}")
-    print(f"Drive: {result.vehicle.drivetrain or 'Unknown'}")
-    print(f"Fuel: {result.vehicle.fuel_type or 'Unknown'}")
-    print("-" * 60)
-    print(f"Estimated Value: {format_money(result.estimated_value)}")
-    print(f"Buy Price Target: {format_money(result.buy_price_target)}")
-    print(f"Target Profit: {format_money(result.target_profit)}")
-    print(f"Projected Profit Margin: {('N/A' if result.projected_profit_margin_pct is None else str(result.projected_profit_margin_pct) + '%')}")
-    print(f"Signal: {result.signal}")
+with st.form("deal_form"):
+    vin = st.text_input("VIN (17 characters)", max_chars=17)
+    mileage = st.number_input("Mileage", min_value=0, step=1000, value=50000)
+    zip_code = st.text_input("ZIP Code", max_chars=5, value="")
 
-    if result.comp_summary:
-        print("-" * 60)
-        print("COMP SUMMARY")
-        print(f"Comp Count: {result.comp_summary.count}")
-        print(f"Median Price: {format_money(result.comp_summary.median_price)}")
-        print(f"Average Price: {format_money(result.comp_summary.avg_price)}")
-        print(f"Adjusted Value: {format_money(result.comp_summary.adjusted_for_mileage)}")
-        print(f"Sample Prices: {result.comp_summary.sample_prices}")
+    with st.expander("Advanced Settings"):
+        radius = st.number_input("Search Radius (miles)", min_value=10, max_value=500, value=DEFAULT_RADIUS_MILES)
+        recon_reserve = st.number_input("Recon Reserve ($)", min_value=0, step=100, value=DEFAULT_RECON_RESERVE)
+        target_profit = st.number_input("Target Profit ($)", min_value=0, step=100, value=DEFAULT_TARGET_PROFIT)
+        min_margin_pct = st.number_input("Min Margin (%)", min_value=0.0, max_value=100.0, step=1.0, value=DEFAULT_MIN_MARGIN_PCT * 100) / 100.0
 
-    if result.notes:
-        print("-" * 60)
-        print("NOTES")
-        for note in result.notes:
-            print(f"- {note}")
+    submitted = st.form_submit_button("Analyze Deal")
 
+if submitted:
+    if not vin or len(vin) != 17:
+        st.error("Please enter a valid 17-character VIN.")
+    elif not zip_code or len(zip_code) != 5 or not zip_code.isdigit():
+        st.error("Please enter a valid 5-digit ZIP code.")
+    else:
+        with st.spinner("Decoding VIN and pulling comps..."):
+            try:
+                result = analyze_deal(
+                    vin=vin,
+                    mileage=int(mileage),
+                    zip_code=zip_code,
+                    radius=int(radius),
+                    recon_reserve=int(recon_reserve),
+                    target_profit=int(target_profit),
+                    min_margin_pct=min_margin_pct,
+                )
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Analyze a used car deal from VIN + mileage + ZIP.")
-    parser.add_argument("--vin", required=True, help="17-character VIN")
-    parser.add_argument("--mileage", required=True, type=int, help="Current vehicle mileage")
-    parser.add_argument("--zip", dest="zip_code", required=True, help="ZIP code for local comps")
-    parser.add_argument("--radius", type=int, default=DEFAULT_RADIUS_MILES, help="Comp search radius in miles")
-    parser.add_argument("--recon", type=int, default=DEFAULT_RECON_RESERVE, help="Recon reserve in dollars")
-    parser.add_argument("--target-profit", type=int, default=DEFAULT_TARGET_PROFIT, help="Target profit in dollars")
-    parser.add_argument("--min-margin", type=float, default=DEFAULT_MIN_MARGIN_PCT, help="Minimum acceptable profit margin as decimal")
-    return parser.parse_args()
+                vehicle_name = " ".join(
+                    [str(x) for x in [result.vehicle.year, result.vehicle.make, result.vehicle.model, result.vehicle.trim] if x]
+                ).strip()
 
+                st.subheader(vehicle_name or result.vehicle.vin)
 
-def main() -> int:
-    args = parse_args()
-    try:
-        result = analyze_deal(
-            vin=args.vin,
-            mileage=args.mileage,
-            zip_code=args.zip_code,
-            radius=args.radius,
-            recon_reserve=args.recon,
-            target_profit=args.target_profit,
-            min_margin_pct=args.min_margin,
-        )
-        print_report(result)
-        return 0
-    except requests.HTTPError as exc:
-        print(f"HTTP error: {exc}", file=sys.stderr)
-        if exc.response is not None:
-            print(exc.response.text[:1000], file=sys.stderr)
-        return 1
-    except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+                if result.signal == "BUY":
+                    st.success(f"Signal: {result.signal}")
+                else:
+                    st.warning(f"Signal: {result.signal}")
 
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Estimated Value", format_money(result.estimated_value))
+                    st.metric("Buy Price Target", format_money(result.buy_price_target))
+                with col2:
+                    st.metric("Target Profit", format_money(result.target_profit))
+                    margin_str = "N/A" if result.projected_profit_margin_pct is None else f"{result.projected_profit_margin_pct}%"
+                    st.metric("Projected Margin", margin_str)
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+                st.markdown("---")
+                st.caption("Vehicle Details")
+                details_col1, details_col2, details_col3 = st.columns(3)
+                with details_col1:
+                    st.write(f"**VIN:** {result.vehicle.vin}")
+                    st.write(f"**Mileage:** {result.mileage:,}")
+                with details_col2:
+                    st.write(f"**Body:** {result.vehicle.body_class or 'Unknown'}")
+                    st.write(f"**Drive:** {result.vehicle.drivetrain or 'Unknown'}")
+                with details_col3:
+                    st.write(f"**Fuel:** {result.vehicle.fuel_type or 'Unknown'}")
+                    st.write(f"**ZIP:** {result.zip_code}")
+
+                if result.comp_summary and result.comp_summary.count > 0:
+                    st.markdown("---")
+                    st.caption("Comp Summary")
+                    comp_col1, comp_col2 = st.columns(2)
+                    with comp_col1:
+                        st.write(f"**Comp Count:** {result.comp_summary.count}")
+                        st.write(f"**Median Price:** {format_money(result.comp_summary.median_price)}")
+                    with comp_col2:
+                        st.write(f"**Average Price:** {format_money(result.comp_summary.avg_price)}")
+                        st.write(f"**Adjusted Value:** {format_money(result.comp_summary.adjusted_for_mileage)}")
+
+                if result.notes:
+                    st.markdown("---")
+                    st.caption("Notes")
+                    for note in result.notes:
+                        st.write(f"- {note}")
+
+            except requests.HTTPError as exc:
+                st.error(f"HTTP error: {exc}")
+            except Exception as exc:
+                st.error(f"Error: {exc}")
