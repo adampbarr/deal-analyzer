@@ -164,7 +164,14 @@ def estimate_value_from_comps(listings: List[Dict[str, Any]], subject_mileage: i
 def analyze_deal(vin: str, mileage: int, zip_code: str, radius: int, recon_reserve: int, target_profit: int, min_margin_pct: float) -> DealAnalysis:
     notes: List[str] = []
     vehicle = decode_vin_nhtsa(vin)
-    api_key = os.getenv("MARKETCHECK_API_KEY")
+
+    api_key: Optional[str] = None
+    try:
+        api_key = st.secrets.get("MARKETCHECK_API_KEY")
+    except Exception:
+        api_key = None
+    if not api_key:
+        api_key = os.getenv("MARKETCHECK_API_KEY")
 
     if not api_key:
         notes.append("MARKETCHECK_API_KEY not found. VIN decode worked, but live market value could not be calculated.")
@@ -177,7 +184,7 @@ def analyze_deal(vin: str, mileage: int, zip_code: str, radius: int, recon_reser
             buy_price_target=None,
             target_profit=None,
             projected_profit_margin_pct=None,
-            signal="PASS",
+            signal="UNKNOWN",
             notes=notes,
             comp_summary=None,
         )
@@ -195,7 +202,7 @@ def analyze_deal(vin: str, mileage: int, zip_code: str, radius: int, recon_reser
             buy_price_target=None,
             target_profit=float(target_profit),
             projected_profit_margin_pct=None,
-            signal="PASS",
+            signal="UNKNOWN",
             notes=notes,
             comp_summary=comp_summary,
         )
@@ -276,6 +283,8 @@ if submitted:
 
                 if result.signal == "BUY":
                     st.success(f"Signal: {result.signal}")
+                elif result.signal == "UNKNOWN":
+                    st.info(f"Signal: {result.signal}")
                 else:
                     st.warning(f"Signal: {result.signal}")
 
