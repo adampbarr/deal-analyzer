@@ -5,6 +5,10 @@ import statistics
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
 MARKETCHECK_SEARCH_URL = "https://api.marketcheck.com/v2/search/car/active"
 DEFAULT_RADIUS_MILES = 75
