@@ -243,7 +243,7 @@ with st.form("deal_form"):
     zip_code = st.text_input("ZIP Code", max_chars=5, value="")
 
     with st.expander("Advanced Settings"):
-        radius = st.number_input("Search Radius (miles)", min_value=10, max_value=500, value=DEFAULT_RADIUS_MILES)
+        radius = st.number_input("Search Radius (miles)", min_value=10, max_value=100, value=DEFAULT_RADIUS_MILES, help="MarketCheck caps radius at 100 miles on most plans.")
         recon_reserve = st.number_input("Recon Reserve ($)", min_value=0, step=100, value=DEFAULT_RECON_RESERVE)
         target_profit = st.number_input("Target Profit ($)", min_value=0, step=100, value=DEFAULT_TARGET_PROFIT)
         min_margin_pct = st.number_input("Min Margin (%)", min_value=0.0, max_value=100.0, step=1.0, value=DEFAULT_MIN_MARGIN_PCT * 100) / 100.0
@@ -319,6 +319,13 @@ if submitted:
                         st.write(f"- {note}")
 
             except requests.HTTPError as exc:
-                st.error(f"HTTP error: {exc}")
+                status = exc.response.status_code if exc.response is not None else "unknown"
+                detail = ""
+                if exc.response is not None:
+                    try:
+                        detail = exc.response.json().get("message") or exc.response.text[:300]
+                    except Exception:
+                        detail = exc.response.text[:300]
+                st.error(f"MarketCheck API error (HTTP {status}): {detail or 'no details returned'}")
             except Exception as exc:
-                st.error(f"Error: {exc}")
+                st.error(f"Error: {type(exc).__name__}: {exc}")
