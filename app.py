@@ -5,9 +5,11 @@ import statistics
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 NHTSA_URL = "https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/{vin}?format=json"
 MARKETCHECK_SEARCH_URL = "https://api.marketcheck.com/v2/search/car/active"
